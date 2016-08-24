@@ -176,55 +176,77 @@ const RecordFragment = function(){
   });
 };
 
+
+/**
+ * @method _onInput
+ * @param evt
+ */
+RecordFragment.prototype._onInput = function(evt){
+  let unique = uniqueIdentitier(evt.target);
+
+  this.cache.addToTail({
+    effect: 'mutation',
+    element: evt.target,
+    selector: uniqueIdentitier(evt.target),
+    type: 'input',
+    value: evt.target.value,
+    _event: evt
+  });
+};
+
+
+/**
+ * @method _onSubmit
+ * @param evt - The dom event
+ */
+RecordFragment.prototype._onSubmit = function(evt){
+  let unique = uniqueIdentitier(evt.target);
+
+  this.cache.addToTail({
+    effect: 'action',
+    element: evt.target,
+    selector: uniqueIdentitier(evt.target),
+    type: 'submit',
+    value: null,
+    _event: evt
+  });
+};
+
+
+/**
+ * @method _onClick
+ * @param evt - The dom event
+ */
+RecordFragment.prototype._onClick = function(evt){
+  let unique = uniqueIdentitier(evt.target);
+
+  this.cache.addToTail({
+    effect: 'action',
+    element: evt.target.nodeName,
+    href: evt.target.href,
+    selector: uniqueIdentitier(evt.target),
+    type: 'click',
+    value: null,
+    _event: evt
+  });
+};
+
+
+/**
+ * @method initEventListeners
+ * @description Bind event listeners to dom objects
+ */
 RecordFragment.prototype.initEventListeners = function(){
-
   Array.from(document.getElementsByTagName('input')).forEach(function(el){
-    el.addEventListener('input', function(evt){
-      let unique = uniqueIdentitier(evt.target);
-
-      this.cache.addToTail({
-        effect: 'mutation',
-        element: evt.target,
-        selector: uniqueIdentitier(evt.target),
-        type: 'input',
-        value: evt.target.value,
-        _event: evt
-      });
-
-    }.bind(this));
+    el.addEventListener('input', this._onInput.bind(this));
   }, this);
-
 
   Array.from(document.forms).forEach(function(el){
-    el.addEventListener('submit', function(evt){
-      let unique = uniqueIdentitier(evt.target);
-
-      this.cache.addToTail({
-        effect: 'action',
-        element: evt.target,
-        selector: uniqueIdentitier(evt.target),
-        type: 'submit',
-        value: null,
-        _event: evt
-      });
-
-    }.bind(this));
+    el.addEventListener('submit', this._onSubmit.bind(this));
   }, this);
+
   Array.from(document.links).forEach(function(el){
-    el.addEventListener('click', function(evt){
-      let unique = uniqueIdentitier(evt.target);
-
-      this.cache.addToTail({
-        effect: 'action',
-        element: evt.target.nodeName,
-        href: evt.target.href,
-        selector: uniqueIdentitier(evt.target),
-        type: 'click',
-        value: null,
-        _event: evt
-      });
-
-    }.bind(this));
+    el.addEventListener('click', this._onClick.bind(this));
   }, this);
 };
 
@@ -317,13 +339,5 @@ window.addEventListener('DOMContentLoaded', function(evt){
   });
 
 });
-
-
-
-
-
-
-
-
 
 
