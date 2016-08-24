@@ -5,32 +5,30 @@ var playing = false;
 var LLDecorator = {
   attachToTail: function(frag){
     this._asArray = this._asArray.concat(frag._asArray);
-    var newTail = frag.tail;
     this.size += frag.size;
 
     // traversal
-    var front = this.head;
+    let front = this.head;
     while (front.next) {
       front = front.next
     }
 
     front.next = frag.head;
     this.tail = frag.tail;
-
   },
 
   saveFragment: function(frag){
-    var count = Object.keys(this.pageFragments).length + 1;
+    const count = Object.keys(this.pageFragments).length + 1;
     this.pageFragments[count] = frag._asArray;
   }
 };
 
 var RecordingsModule = (function(){
-  var pages = {};              // hash of urls and LL recordings
-  var currentRecording = null; // linked List of current (in progress) recording
-  var initialPage = null; // url of starting page of recording so can append after
-  var ongoingFragIndex = 0; // for multi page automations - keeps track of which LL fragment to send on page load
-  var currentPlayback = null; // set after ui starts playback on first page.
+  let pages = {};              // hash of urls and LL recordings
+  let currentRecording = null; // linked List of current (in progress) recording
+  let initialPage = null; // url of starting page of recording so can append after
+  let ongoingFragIndex = 0; // for multi page automations - keeps track of which LL fragment to send on page load
+  let currentPlayback = null; // set after ui starts playback on first page.
 
   return {
     append: function(fragment){
@@ -62,14 +60,16 @@ var RecordingsModule = (function(){
     },
 
     getOngoingFragment: function(url){
-      var pageAutomations;
+      let returnFrag;
+      let firstFrag;
+      let pageAutomations;
 
       if (url && !playing) { // initial playback, return first fragment
         ongoingFragIndex = 0;
         playing = true;
         if (pageAutomations = pages[url]) {
           currentPlayback = pageAutomations;
-          var firstFrag = pageAutomations.pageFragments[ongoingFragIndex += 1];
+          firstFrag = pageAutomations.pageFragments[ongoingFragIndex += 1];
           return firstFrag;
         }
       } else if (currentPlayback) {
@@ -79,10 +79,23 @@ var RecordingsModule = (function(){
           return currentPlayback;
         }
 
-        var returnFrag = currentPlayback.pageFragments[ongoingFragIndex += 1];
+        returnFrag = currentPlayback.pageFragments[ongoingFragIndex += 1];
         return returnFrag;
       }
     },
+
+    getCurrentFragIndex: function(){
+      return ongoingFragIndex;
+    },
+
+    currentPlaylist: function(){
+      return currentPlayback || null;
+    },
+
+    debug: function(){
+      return {pages: pages, currentPlayback: currentPlayback, currentRecording: currentRecording};
+    },
+
     _internal: 0
 
   };
@@ -130,7 +143,7 @@ const INBOX = {
       }
 
       getPageUrl(function(tab){
-        var frag = RecordingsModule.getOngoingFragment(tab.url);
+        let frag = RecordingsModule.getOngoingFragment(tab.url);
         if (!frag) {
         }
         messageContentScript({
@@ -140,6 +153,9 @@ const INBOX = {
       })
     },
 
+    /**
+     * @return {boolean}
+     */
     RECORD: function(request, sender, sendResponse){
       recording = true;
       messageContentScript({message: 'RECORD'}, function(response){
@@ -163,12 +179,22 @@ const INBOX = {
   CONTENT_SCRIPT: {
     STATE_REQUEST: function(request, sender, sendResponse){
 
+      let frag;
+      let index;
+      let playlist;
       let state = 'DEFAULT';
       if (recording && !playing) {
         state = 'RECORDING';
       } else if (playing && !recording) {
-        var frag = RecordingsModule.getOngoingFragment();
         state = 'PLAYING';
+        playlist = RecordingsModule.currentPlaylist();
+        index = RecordingsModule.getCurrentFragIndex();
+        if (index < playlist.totalFragments) {
+          frag = RecordingsModule.getOngoingFragment();
+        } else if (index === playlist.totalFragments) {
+          state = 'DEFAULT';
+          playing = false;
+        }
         if (!frag) {
         }
       }
@@ -176,12 +202,12 @@ const INBOX = {
       sendResponse({
         value: state,
         details: frag || null
-      }, function(){
       });
     },
 
-    UNLOAD: function(request, sender, sendResponse){
+    UNLOAD: function(request){
       // pages[request.location.href] = request.details;
+      console.log('received unload', request);
       RecordingsModule.append(request.details);
     }
   }
@@ -211,8 +237,8 @@ const getPageUrl = function(cb){
 
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse){
 
-  var from = sender.tab ? 'CONTENT_SCRIPT' : 'EXTENSION';
-  var narrowedResponse = INBOX[from][request.message];
+  const from = sender.tab ? 'CONTENT_SCRIPT' : 'EXTENSION';
+  let narrowedResponse = INBOX[from][request.message];
 
   if (narrowedResponse) {
     narrowedResponse(request, sender, sendResponse);

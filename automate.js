@@ -8,10 +8,10 @@ var stopped = false;
  *
  ***********/
 
-
 /**
  * @param  {ListNode[]} list - An array of
  * @param  {Function} finished - Callback function
+ * @param  {Function} decorate - parses a stored (recorded) event into a playable event ie. onSubmit -> button[type=submit].click
  * @param  {number} time - time between sequence executions
  * @return {Function}
  */
@@ -31,7 +31,6 @@ const sequenceDelay = function(list, decorate, finished, time){
   }
 };
 
-
 const uniqueIdentitier = function(base, current, build, levels){
   current = current || base;
   levels = levels || 0;
@@ -42,6 +41,10 @@ const uniqueIdentitier = function(base, current, build, levels){
 
   if (levels === 10 || current.nodeName === 'BODY') {
     return build;
+  }
+
+  if(levels === 0 && current.nodeName === 'IMG') {
+    return 'img[src=\"'+ current.src + '\"]';
   }
 
   if (current.id) {
@@ -64,7 +67,6 @@ const uniqueIdentitier = function(base, current, build, levels){
 
 };
 
-
 // TODO: merge this and findSubmit
 var getFromSelector = function(identity){
   if (identity.element === 'A' && identity.href) {
@@ -72,6 +74,9 @@ var getFromSelector = function(identity){
       return el.href === identity.href;
     })[0];
   } else {
+    if(identity.element === 'IMG') {
+      debugger
+    }
     return document.querySelector(identity.selector);
   }
 };
@@ -84,11 +89,13 @@ var findSubmit = function(formEl){
   }
 };
 
-
 const parseEvent = function(evt){
+  console.log('PARSING', evt);
+
   let directions = evt.val;
   let node = getFromSelector(directions);
   if (!node) {
+    throw new Error({message: 'Couldn\'t find node from selector'});
   }
 
   if (directions.type === 'input') {
@@ -107,12 +114,11 @@ const parseEvent = function(evt){
       let syntheticEvent = new Event(directions.type, {
         bubbles: true
       });
-      node.focus();
+      // node.focus();
       node.dispatchEvent(syntheticEvent);
     };
   }
 };
-
 
 /************
  *
@@ -158,7 +164,6 @@ LinkedList.prototype.atIndex = function(index){
   return node;
 };
 
-
 /*********
  * RECORDER
  **********/
@@ -168,6 +173,12 @@ const RecordFragment = function(){
   this.initEventListeners();
 
   window.addEventListener('beforeunload', function(evt){
+    console.log('BEFORE UNLOAD!');
+    console.dir(automation);
+    Object.keys(automation).forEach(key => {
+      console.log('key ', key, ' value ', automation[key]);
+    });
+    // return false;
     if (stopped) {
       return;
     }
@@ -175,7 +186,6 @@ const RecordFragment = function(){
     });
   });
 };
-
 
 /**
  * @method _onInput
@@ -194,7 +204,6 @@ RecordFragment.prototype._onInput = function(evt){
   });
 };
 
-
 /**
  * @method _onSubmit
  * @param evt - The dom event
@@ -211,7 +220,6 @@ RecordFragment.prototype._onSubmit = function(evt){
     _event: evt
   });
 };
-
 
 /**
  * @method _onClick
@@ -231,25 +239,53 @@ RecordFragment.prototype._onClick = function(evt){
   });
 };
 
-
 /**
  * @method initEventListeners
  * @description Bind event listeners to dom objects
  */
 RecordFragment.prototype.initEventListeners = function(){
+  // inputs
   Array.from(document.getElementsByTagName('input')).forEach(function(el){
     el.addEventListener('input', this._onInput.bind(this));
   }, this);
 
+  // forms
   Array.from(document.forms).forEach(function(el){
     el.addEventListener('submit', this._onSubmit.bind(this));
   }, this);
 
+  // links
   Array.from(document.links).forEach(function(el){
-    el.addEventListener('click', this._onClick.bind(this));
-  }, this);
-};
+    el.addEventListener('click', function(evt){
+      console.log('LINK CLICK', evt);
 
+      this._onClick.call(this, evt);
+    }.bind(this), true);
+
+  }, this);
+
+  // images
+  Array.from(document.images).forEach(el => {
+    el.addEventListener('click', function(evt){
+      console.log('IMAGE CLICK');
+      this._onClick.call(this, evt);
+    }, true);
+  });
+
+  // document.click
+  document.addEventListener('click', function(evt){
+    const nodename = evt.target.nodeName;
+    const pass = {
+      'IMG':null
+    };
+
+    if(nodename in pass) {
+      console.log('DOCUMENT CLICK: evt.target =', evt, ' capture');
+      this._onClick.call(this, evt);
+    }
+  }.bind(this), true);
+
+};
 
 /*********
  * PLAYBACK
@@ -277,13 +313,11 @@ const playback = function(instructions, wait){
     }
   };
 
-
   sequenceDelay(instructions, parseEvent, function(event, callback){
     event();
     callback();
   })();
 };
-
 
 /**********
  * MESSAGING
@@ -313,6 +347,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse){
   if (request.message === 'STOP') {
     stopped = true;
     if (automation) {
+      console.info('sending last fragment', automation);
       sendResponse({
         details: automation.cache.size ? automation : null,
         location: window.location.href
@@ -326,11 +361,14 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse){
   }
 });
 
-
 window.addEventListener('DOMContentLoaded', function(evt){
   background.sendMessage({message: 'STATE_REQUEST'}, function(response){
+    console.log('automate:: state request response ', response);
     if (response.value === 'RECORDING') {
-      automation = new RecordFragment();
+      setTimeout(function(){
+        automation = new RecordFragment();
+      },1000);
+
     } else if (response.value === 'PLAYING') {
       playback(response.details)
     } else {
