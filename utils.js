@@ -17,7 +17,7 @@ const styles = {
 };
 
 (function(ctx){
-  const methods = ['log', 'dir', 'warn', 'error'];
+  const methods = ['log', 'dir', 'warn', 'error', 'info', 'group', 'groupEnd'];
 
   let _console = ctx.console;
   let logger = {};
