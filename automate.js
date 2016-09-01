@@ -15,13 +15,13 @@ var stopped = false;
  * @param  {number} time - time between sequence executions
  * @return {Function}
  */
-const sequenceDelay = function(list, decorate, finished, time){
-  let paths = !decorate ? Array.from(list) : Array.from(list).map(item =>{
+const sequenceDelay = function(list, decorate, finished, time) {
+  let paths = !decorate ? Array.from(list) : Array.from(list).map(item => {
     return decorate(item);
   });
 
-  return function event(){
-    let finish = function(){
+  return function event() {
+    let finish = function() {
       paths.shift();
       if (paths.length) {
         event();
@@ -31,20 +31,20 @@ const sequenceDelay = function(list, decorate, finished, time){
   }
 };
 
-const uniqueIdentitier = function(base, current, build, levels){
+const uniqueIdentitier = function(base, current, build, levels) {
   current = current || base;
   levels = levels || 0;
   build = build || '';
 
-  var nodename = current.nodeName.toLowerCase();
-  var thisSelector = '';
+  let nodename = current.nodeName.toLowerCase();
+  let thisSelector = '';
 
   if (levels === 10 || current.nodeName === 'BODY') {
     return build;
   }
 
-  if(levels === 0 && current.nodeName === 'IMG') {
-    return 'img[src=\"'+ current.src + '\"]';
+  if (levels === 0 && current.nodeName === 'IMG') {
+    return 'img[src=\"' + current.src + '\"]';
   }
 
   if (current.id) {
@@ -68,20 +68,20 @@ const uniqueIdentitier = function(base, current, build, levels){
 };
 
 // TODO: merge this and findSubmit
-var getFromSelector = function(identity){
+const getFromSelector = function(identity) {
   if (identity.element === 'A' && identity.href) {
-    return Array.from(document.links).filter(function(el){
+    return Array.from(document.links).filter(function(el) {
       return el.href === identity.href;
     })[0];
   } else {
-    if(identity.element === 'IMG') {
-      debugger
+    if (identity.element === 'IMG') {
+
     }
     return document.querySelector(identity.selector);
   }
 };
 
-var findSubmit = function(formEl){
+const findSubmit = function(formEl) {
   try {
     return formEl.querySelectorAll('input[type=submit], button[type=submit]')[0];
   } catch (e) {
@@ -89,9 +89,7 @@ var findSubmit = function(formEl){
   }
 };
 
-const parseEvent = function(evt){
-  console.log('PARSING', evt);
-
+const parseEvent = function(evt) {
   let directions = evt.val;
   let node = getFromSelector(directions);
   if (!node) {
@@ -99,22 +97,23 @@ const parseEvent = function(evt){
   }
 
   if (directions.type === 'input') {
-    return function(){
+    return function() {
       node.value = directions.value;
     };
   }
   else if (directions.type === 'submit') {
-    return function(submitType){
+    return function(submitType) {
       let syntheticEvent = new Event('click');
       submitType.dispatchEvent(syntheticEvent);
     }.bind(null, findSubmit(node));
   }
   else if (directions.type === 'click') {
-    return function(){
-      let syntheticEvent = new Event(directions.type, {
-        bubbles: true
+    return function() {
+      let syntheticEvent = new MouseEvent('mouseup', {
+        bubbles: true,
+        view: window,
+        cancelable: false
       });
-      // node.focus();
       node.dispatchEvent(syntheticEvent);
     };
   }
@@ -126,7 +125,7 @@ const parseEvent = function(evt){
  *
  *************/
 
-const LinkedList = function(){
+const LinkedList = function() {
   this.head = null;
   this.tail = null;
   this.pageFragments = {};
@@ -134,13 +133,13 @@ const LinkedList = function(){
   this._asArray = [];
 };
 
-const ListNode = function(val){
+const ListNode = function(val) {
   this.val = val;
   this.next = null;
 };
 
-LinkedList.prototype.addToTail = function(val){
-  var node = new ListNode(val);
+LinkedList.prototype.addToTail = function(val) {
+  const node = new ListNode(val);
   if (!this.head) {
     this.head = node;
   } else {
@@ -151,7 +150,7 @@ LinkedList.prototype.addToTail = function(val){
   this.tail = node;
 };
 
-LinkedList.prototype.atIndex = function(index){
+LinkedList.prototype.atIndex = function(index) {
   let node = this.head, count = 0;
   if (index > this.size) {
     return;
@@ -168,22 +167,23 @@ LinkedList.prototype.atIndex = function(index){
  * RECORDER
  **********/
 
-const RecordFragment = function(){
+const RecordFragment = function() {
   this.cache = new LinkedList();
   this.initEventListeners();
 
-  window.addEventListener('beforeunload', function(evt){
+  window.addEventListener('beforeunload', function(evt) {
     console.log('BEFORE UNLOAD!');
-    console.dir(automation);
-    Object.keys(automation).forEach(key => {
-      console.log('key ', key, ' value ', automation[key]);
-    });
-    // return false;
-    if (stopped) {
-      return;
+    // console.dir(automation);
+    if (automation && automation.cache) {
+      Object.keys(automation).forEach(key => {
+        console.log('key ', key, ' value ', automation[key]);
+      });
+      background.sendMessage({message: 'UNLOAD', details: automation, location: window.location});
+
+    } else {
+      console.log('no actions performed on this page');
     }
-    background.sendMessage({message: 'UNLOAD', details: automation, location: window.location}, function(resp){
-    });
+
   });
 };
 
@@ -191,7 +191,7 @@ const RecordFragment = function(){
  * @method _onInput
  * @param evt
  */
-RecordFragment.prototype._onInput = function(evt){
+RecordFragment.prototype._onInput = function(evt) {
   let unique = uniqueIdentitier(evt.target);
 
   this.cache.addToTail({
@@ -208,7 +208,7 @@ RecordFragment.prototype._onInput = function(evt){
  * @method _onSubmit
  * @param evt - The dom event
  */
-RecordFragment.prototype._onSubmit = function(evt){
+RecordFragment.prototype._onSubmit = function(evt) {
   let unique = uniqueIdentitier(evt.target);
 
   this.cache.addToTail({
@@ -225,7 +225,7 @@ RecordFragment.prototype._onSubmit = function(evt){
  * @method _onClick
  * @param evt - The dom event
  */
-RecordFragment.prototype._onClick = function(evt){
+RecordFragment.prototype._onClick = function(evt) {
   let unique = uniqueIdentitier(evt.target);
 
   this.cache.addToTail({
@@ -243,20 +243,20 @@ RecordFragment.prototype._onClick = function(evt){
  * @method initEventListeners
  * @description Bind event listeners to dom objects
  */
-RecordFragment.prototype.initEventListeners = function(){
+RecordFragment.prototype.initEventListeners = function() {
   // inputs
-  Array.from(document.getElementsByTagName('input')).forEach(function(el){
+  Array.from(document.getElementsByTagName('input')).forEach(function(el) {
     el.addEventListener('input', this._onInput.bind(this));
   }, this);
 
   // forms
-  Array.from(document.forms).forEach(function(el){
+  Array.from(document.forms).forEach(function(el) {
     el.addEventListener('submit', this._onSubmit.bind(this));
   }, this);
 
   // links
-  Array.from(document.links).forEach(function(el){
-    el.addEventListener('click', function(evt){
+  Array.from(document.links).forEach(function(el) {
+    el.addEventListener('click', function(evt) {
       console.log('LINK CLICK', evt);
 
       this._onClick.call(this, evt);
@@ -266,21 +266,19 @@ RecordFragment.prototype.initEventListeners = function(){
 
   // images
   Array.from(document.images).forEach(el => {
-    el.addEventListener('click', function(evt){
-      console.log('IMAGE CLICK');
+    el.addEventListener('click', function(evt) {
       this._onClick.call(this, evt);
-    }, true);
+    }.bind(this), true);
   });
 
   // document.click
-  document.addEventListener('click', function(evt){
+  document.addEventListener('click', function(evt) {
     const nodename = evt.target.nodeName;
     const pass = {
-      'IMG':null
+      'IMG': null
     };
 
-    if(nodename in pass) {
-      console.log('DOCUMENT CLICK: evt.target =', evt, ' capture');
+    if (nodename in pass) {
       this._onClick.call(this, evt);
     }
   }.bind(this), true);
@@ -292,28 +290,10 @@ RecordFragment.prototype.initEventListeners = function(){
  **********/
 /**
  * @param  {Object} instructions - The instructions used to playback the automation.
- * @param  {number} wait  - amount of time to pause between events
  * @return {none}
  */
-const playback = function(instructions, wait){
-  var events = {
-    mutation: function(inst, ele, cb){
-      ele.value = inst.value;
-      cb();
-
-    },
-    action: function(inst, ele, cb){
-      let syntheticEvent = new Event(inst.type);
-      if (inst.type === 'submit') {
-        ele.submit();
-      } else {
-        ele.dispatchEvent(syntheticEvent);
-      }
-      cb();
-    }
-  };
-
-  sequenceDelay(instructions, parseEvent, function(event, callback){
+const playback = function(instructions) {
+  sequenceDelay(instructions, parseEvent, function(event, callback) {
     event();
     callback();
   })();
@@ -324,7 +304,7 @@ const playback = function(instructions, wait){
  ***********/
 
 
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse){
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (request.message === "RECORD") {
     if (!automation) {
       automation = new RecordFragment();
@@ -361,21 +341,22 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse){
   }
 });
 
-window.addEventListener('DOMContentLoaded', function(evt){
-  background.sendMessage({message: 'STATE_REQUEST'}, function(response){
-    console.log('automate:: state request response ', response);
+window.addEventListener('DOMContentLoaded', function(evt) {
+  background.sendMessage({message: 'STATE_REQUEST'}, function(response) {
     if (response.value === 'RECORDING') {
-      setTimeout(function(){
+      setTimeout(function() {
         automation = new RecordFragment();
-      },1000);
-
+      }, 1000);
     } else if (response.value === 'PLAYING') {
-      playback(response.details)
+      if (response.details) {
+        playback(response.details)
+      } else {
+        console.error('state request returned no instructions');
+      }
     } else {
 
     }
   });
-
 });
 
 
