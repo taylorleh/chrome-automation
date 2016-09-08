@@ -4,7 +4,9 @@
     "comma-dangle": ["error", "never"],
     "space-before-function-paren": ["warn", "never"],
     "arrow-body-style": ["error", "as-needed"],
-    "func-names": ["error", "never"]
+    "func-names": ["error", "never"],
+    "max-len": ["error", 120, { "ignoreComments": true }],
+    "no-underscore-dangle": ["error", { "allowAfterThis": true }]
 
   },
   "env": {
