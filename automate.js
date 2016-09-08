@@ -1,12 +1,5 @@
-var background = chrome.runtime;
-var automation;
-var stopped = false;
-
-/**********
- *
- * UTILITIES
- *
- ***********/
+const background = chrome.runtime;
+let automation;
 
 /**
  * @param  {ListNode[]} list - An array of
@@ -16,114 +9,112 @@ var stopped = false;
  * @return {Function}
  */
 const sequenceDelay = function(list, decorate, finished, time) {
-  let paths = !decorate ? Array.from(list) : Array.from(list).map(item => {
-    return decorate(item);
-  });
+  const paths = !decorate ? Array.from(list) : Array.from(list).map(item => decorate(item));
 
   return function event() {
-    let finish = function() {
+    const finish = function() {
       paths.shift();
       if (paths.length) {
         event();
       }
     };
     setTimeout(finished.bind(null, paths[0], finish), time || 600);
-  }
+  };
 };
 
-const uniqueIdentitier = function(base, current, build, levels) {
-  current = current || base;
-  levels = levels || 0;
-  build = build || '';
-
-  let nodename = current.nodeName.toLowerCase();
+const uniqueIdentitier = function(base, current = base, build = '', levels = 0) {
+  const nodeName = current.nodeName.toLowerCase();
   let thisSelector = '';
+  let prefixed;
+
 
   if (levels === 10 || current.nodeName === 'BODY') {
     return build;
   }
 
   if (levels === 0 && current.nodeName === 'IMG') {
-    return 'img[src=\"' + current.src + '\"]';
+    return `img[src="${current.src}"]`;
   }
 
   if (current.id) {
-    var prefixed = [nodename, '#', current.id].join('');
+    prefixed = [nodeName, '#', current.id].join('');
     return prefixed;
   }
 
   if (current.className) {
-    var prefixed = nodename + '.';
-    thisSelector = prefixed += Array.from(current.classList).join('.');
-
+    prefixed = `${nodeName}.`;
+    thisSelector = prefixed + Array.from(current.classList).join('.');
   } else {
-    thisSelector = nodename
+    thisSelector = nodeName;
   }
 
   if (current.parentElement) {
-    return uniqueIdentitier(base, current.parentElement, [thisSelector, build].join(' '), levels + 1)
+    return uniqueIdentitier(base, current.parentElement, [thisSelector, build].join(' '), levels + 1);
   }
   return build;
-
 };
 
 // TODO: merge this and findSubmit
 const getFromSelector = function(identity) {
   if (identity.element === 'A' && identity.href) {
-    return Array.from(document.links).filter(function(el) {
-      return el.href === identity.href;
-    })[0];
-  } else {
-    if (identity.element === 'IMG') {
-
-    }
-    return document.querySelector(identity.selector);
+    return Array.from(document.links).filter(el => el.href === identity.href)[0];
   }
+  return document.querySelector(identity.selector);
 };
 
 const findSubmit = function(formEl) {
+  const submitableElements = [formEl];
   try {
-    return formEl.querySelectorAll('input[type=submit], button[type=submit]')[0];
+    submitableElements.push(
+      formEl.querySelectorAll('input[type=submit], button[type=submit]')[0]
+    );
   } catch (e) {
-    return formEl;
+    console.warn('Could not find secondary submit type from form el =', formEl);
   }
+  return submitableElements;
 };
 
 const parseEvent = function(evt) {
-  let directions = evt.val;
-  let node = getFromSelector(directions);
+  const directions = evt.val;
+  const node = getFromSelector(directions);
   if (!node) {
-    throw new Error({message: 'Couldn\'t find node from selector'});
+    throw new Error({ message: 'Couldn\'t find node from selector' });
   }
 
   if (directions.type === 'input') {
     return function() {
       node.value = directions.value;
     };
-  }
-  else if (directions.type === 'submit') {
-    return function(submitType) {
-      let syntheticEvent = new Event('click');
-      submitType.dispatchEvent(syntheticEvent);
+  } else if (directions.type === 'submit') {
+    return function(submitEls) {
+      console.info('submitable elements', submitEls);
+      try {
+        submitEls[0].submit();
+      } catch (e) {
+        console.warn('could not invoke "submit" on', submitEls[0]);
+        const syntheticEvent = new Event('click');
+        submitEls[1].dispatchEvent(syntheticEvent);
+      }
     }.bind(null, findSubmit(node));
-  }
-  else if (directions.type === 'click') {
+  } else if (directions.type === 'click') {
     return function() {
-      let syntheticEvent = new MouseEvent('mouseup', {
+      const syntheticEvent = new MouseEvent('click', {
         bubbles: true,
-        view: window,
-        cancelable: false
+        cancelable: true,
+        view: window
       });
+      console.info('parsing click event', syntheticEvent);
       node.dispatchEvent(syntheticEvent);
     };
   }
+  return null;
 };
 
-/************
- *
+/**
+ *************
  * LINKED LIST
- *
- *************/
+ *************
+ */
 
 const LinkedList = function() {
   this.head = null;
@@ -151,9 +142,10 @@ LinkedList.prototype.addToTail = function(val) {
 };
 
 LinkedList.prototype.atIndex = function(index) {
-  let node = this.head, count = 0;
+  let node = this.head;
+  let count = 0;
   if (index > this.size) {
-    return;
+    return null;
   }
 
   while (node && index > count) {
@@ -163,37 +155,34 @@ LinkedList.prototype.atIndex = function(index) {
   return node;
 };
 
-/*********
+/**
+ * ********
  * RECORDER
- **********/
+ * ********
+ */
 
 const RecordFragment = function() {
   this.cache = new LinkedList();
   this.initEventListeners();
 
-  window.addEventListener('beforeunload', function(evt) {
+  window.addEventListener('beforeunload', () => {
     console.log('BEFORE UNLOAD!');
-    // console.dir(automation);
     if (automation && automation.cache) {
       Object.keys(automation).forEach(key => {
         console.log('key ', key, ' value ', automation[key]);
       });
-      background.sendMessage({message: 'UNLOAD', details: automation, location: window.location});
-
+      background.sendMessage({ message: 'UNLOAD', details: automation, location: window.location });
     } else {
       console.log('no actions performed on this page');
     }
-
   });
 };
 
 /**
- * @method _onInput
+ * @method onInput
  * @param evt
  */
-RecordFragment.prototype._onInput = function(evt) {
-  let unique = uniqueIdentitier(evt.target);
-
+RecordFragment.prototype.onInput = function(evt) {
   this.cache.addToTail({
     effect: 'mutation',
     element: evt.target,
@@ -205,12 +194,11 @@ RecordFragment.prototype._onInput = function(evt) {
 };
 
 /**
- * @method _onSubmit
+ * @method onSubmit
  * @param evt - The dom event
  */
-RecordFragment.prototype._onSubmit = function(evt) {
-  let unique = uniqueIdentitier(evt.target);
-
+RecordFragment.prototype.onSubmit = function(evt) {
+  console.info('registering form submit');
   this.cache.addToTail({
     effect: 'action',
     element: evt.target,
@@ -222,12 +210,10 @@ RecordFragment.prototype._onSubmit = function(evt) {
 };
 
 /**
- * @method _onClick
+ * @method onClick
  * @param evt - The dom event
  */
-RecordFragment.prototype._onClick = function(evt) {
-  let unique = uniqueIdentitier(evt.target);
-
+RecordFragment.prototype.onClick = function(evt) {
   this.cache.addToTail({
     effect: 'action',
     element: evt.target.nodeName,
@@ -246,86 +232,77 @@ RecordFragment.prototype._onClick = function(evt) {
 RecordFragment.prototype.initEventListeners = function() {
   // inputs
   Array.from(document.getElementsByTagName('input')).forEach(function(el) {
-    el.addEventListener('input', this._onInput.bind(this));
+    el.addEventListener('input', this.onInput.bind(this));
   }, this);
 
   // forms
   Array.from(document.forms).forEach(function(el) {
-    el.addEventListener('submit', this._onSubmit.bind(this));
+    el.addEventListener('submit', this.onSubmit.bind(this));
   }, this);
 
   // links
   Array.from(document.links).forEach(function(el) {
-    el.addEventListener('click', function(evt) {
-      console.log('LINK CLICK', evt);
-
-      this._onClick.call(this, evt);
-    }.bind(this), true);
-
+    el.addEventListener('click', (evt) => {
+      console.info('registering link click');
+      this.onClick.call(this, evt);
+    }, true);
   }, this);
 
   // images
-  Array.from(document.images).forEach(el => {
-    el.addEventListener('click', function(evt) {
-      this._onClick.call(this, evt);
-    }.bind(this), true);
-  });
-
-  // document.click
-  document.addEventListener('click', function(evt) {
-    const nodename = evt.target.nodeName;
-    const pass = {
-      'IMG': null
-    };
-
-    if (nodename in pass) {
-      this._onClick.call(this, evt);
-    }
-  }.bind(this), true);
-
+  Array.from(document.images).forEach(function(el) {
+    el.addEventListener('click', (evt) => {
+      console.info('registering image click');
+      this.onClick.call(this, evt);
+    }, true);
+  }, this);
 };
 
-/*********
+/**
+ * ********
  * PLAYBACK
- **********/
+ * ********
+ */
+
+
 /**
  * @param  {Object} instructions - The instructions used to playback the automation.
  * @return {none}
  */
 const playback = function(instructions) {
-  sequenceDelay(instructions, parseEvent, function(event, callback) {
+  sequenceDelay(instructions, parseEvent, (event, callback) => {
     event();
     callback();
   })();
 };
 
-/**********
+/**
+ * *********
  * MESSAGING
- ***********/
+ * *********
+ */
 
 
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.message === "RECORD") {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.message === 'RECORD') {
     if (!automation) {
       automation = new RecordFragment();
       sendResponse({
-        message: "ACCEPT",
+        message: 'ACCEPT',
         location: window.location.href
       });
     } else {
       sendResponse({
-        message: "IN_PROGRESS"
+        message: 'IN_PROGRESS'
       });
     }
   }
 
-  if (request.message === "PLAYBACK") {
+  if (request.message === 'PLAYBACK') {
     playback(request.details);
-    sendResponse({message: 'RUNNING'});
+    sendResponse({ message: 'RUNNING' });
   }
 
   if (request.message === 'STOP') {
-    stopped = true;
     if (automation) {
       console.info('sending last fragment', automation);
       sendResponse({
@@ -336,27 +313,35 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     } else {
       sendResponse({
         message: null
-      })
+      });
     }
   }
 });
 
-window.addEventListener('DOMContentLoaded', function(evt) {
-  background.sendMessage({message: 'STATE_REQUEST'}, function(response) {
+
+const requestState = function() {
+  console.log('requesting state');
+  background.sendMessage({ message: 'STATE_REQUEST' }, response => {
+    console.log('received states response', response);
     if (response.value === 'RECORDING') {
-      setTimeout(function() {
+      console.info('continue recording');
+      setTimeout(() => {
         automation = new RecordFragment();
       }, 1000);
     } else if (response.value === 'PLAYING') {
+      console.info('continue playing');
       if (response.details) {
-        playback(response.details)
+        playback(response.details);
       } else {
         console.error('state request returned no instructions');
       }
-    } else {
-
     }
   });
+};
+
+window.addEventListener('load', () => {
+  console.info('dom loaded');
+  setTimeout(() => {
+    requestState();
+  }, 0);
 });
-
-
