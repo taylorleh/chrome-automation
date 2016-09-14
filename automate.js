@@ -1,3 +1,5 @@
+const { fromNode, toNode } = require('simple-xpath-position');
+
 const background = chrome.runtime;
 let automation;
 
@@ -27,7 +29,6 @@ const uniqueIdentitier = function(base, current = base, build = '', levels = 0) 
   let thisSelector = '';
   let prefixed;
 
-
   if (levels === 10 || current.nodeName === 'BODY') {
     return build;
   }
@@ -54,14 +55,6 @@ const uniqueIdentitier = function(base, current = base, build = '', levels = 0) 
   return build;
 };
 
-// TODO: merge this and findSubmit
-const getFromSelector = function(identity) {
-  if (identity.element === 'A' && identity.href) {
-    return Array.from(document.links).filter(el => el.href === identity.href)[0];
-  }
-  return document.querySelector(identity.selector);
-};
-
 const findSubmit = function(formEl) {
   const submitableElements = [formEl];
   try {
@@ -76,7 +69,7 @@ const findSubmit = function(formEl) {
 
 const parseEvent = function(evt) {
   const directions = evt.val;
-  const node = getFromSelector(directions);
+  const node = toNode(directions.xpath, window.document);
   if (!node) {
     throw new Error({ message: 'Couldn\'t find node from selector' });
   }
@@ -163,14 +156,20 @@ LinkedList.prototype.atIndex = function(index) {
 
 const RecordFragment = function() {
   this.cache = new LinkedList();
+  this.boundInput = this.onInput.bind(this);
+  this.boundSubmit = this.onSubmit.bind(this);
+  this.boundClikc = this.onClick.bind(this);
+  this.listeners = {
+    images: Array.from(document.images),
+    links: Array.from(document.links),
+    forms: Array.from(document.forms),
+    inputs: Array.from(document.getElementsByTagName('input'))
+  };
   this.initEventListeners();
 
   window.addEventListener('beforeunload', () => {
     console.log('BEFORE UNLOAD!');
     if (automation && automation.cache) {
-      Object.keys(automation).forEach(key => {
-        console.log('key ', key, ' value ', automation[key]);
-      });
       background.sendMessage({ message: 'UNLOAD', details: automation, location: window.location });
     } else {
       console.log('no actions performed on this page');
@@ -183,8 +182,10 @@ const RecordFragment = function() {
  * @param evt
  */
 RecordFragment.prototype.onInput = function(evt) {
+  console.info('xpath selector ', fromNode(evt.target));
   this.cache.addToTail({
     effect: 'mutation',
+    xpath: fromNode(evt.target),
     element: evt.target,
     selector: uniqueIdentitier(evt.target),
     type: 'input',
@@ -198,9 +199,10 @@ RecordFragment.prototype.onInput = function(evt) {
  * @param evt - The dom event
  */
 RecordFragment.prototype.onSubmit = function(evt) {
-  console.info('registering form submit');
+  console.info('xpath selector ', fromNode(evt.target));
   this.cache.addToTail({
     effect: 'action',
+    xpath: fromNode(evt.target),
     element: evt.target,
     selector: uniqueIdentitier(evt.target),
     type: 'submit',
@@ -214,8 +216,10 @@ RecordFragment.prototype.onSubmit = function(evt) {
  * @param evt - The dom event
  */
 RecordFragment.prototype.onClick = function(evt) {
+  console.info('xpath selector ', fromNode(evt.target));
   this.cache.addToTail({
     effect: 'action',
+    xpath: fromNode(evt.target),
     element: evt.target.nodeName,
     href: evt.target.href,
     selector: uniqueIdentitier(evt.target),
@@ -230,39 +234,39 @@ RecordFragment.prototype.onClick = function(evt) {
  * @description Bind event listeners to dom objects
  */
 RecordFragment.prototype.initEventListeners = function() {
+  const { inputs, links, forms, images } = this.listeners;
   // inputs
-  Array.from(document.getElementsByTagName('input')).forEach(function(el) {
-    el.addEventListener('input', this.onInput.bind(this));
-  }, this);
+  inputs.forEach(el => el.addEventListener('input', this.boundInput));
 
   // forms
-  Array.from(document.forms).forEach(function(el) {
-    el.addEventListener('submit', this.onSubmit.bind(this));
-  }, this);
+  forms.forEach(el => el.addEventListener('submit', this.boundSubmit));
 
   // links
-  Array.from(document.links).forEach(function(el) {
-    el.addEventListener('click', (evt) => {
-      console.info('registering link click');
-      this.onClick.call(this, evt);
-    }, true);
-  }, this);
+  links.forEach(el => el.addEventListener('click', this.boundClikc));
 
   // images
-  Array.from(document.images).forEach(function(el) {
-    el.addEventListener('click', (evt) => {
-      console.info('registering image click');
-      this.onClick.call(this, evt);
-    }, true);
-  }, this);
+  images.forEach(el => el.addEventListener('click', this.boundClikc));
 };
 
+RecordFragment.prototype.removeEvents = function() {
+  const { inputs, links, forms, images } = this.listeners;
+  // inputs
+  inputs.forEach(el => el.removeEventListener('input', this.boundInput));
+
+  // forms
+  forms.forEach(el => el.removeEventListener('submit', this.boundSubmit));
+
+  // links
+  links.forEach(el => el.removeEventListener('click', this.boundClikc));
+
+  // images
+  images.forEach(el => el.removeEventListener('click', this.boundClikc));
+};
 /**
  * ********
  * PLAYBACK
  * ********
  */
-
 
 /**
  * @param  {Object} instructions - The instructions used to playback the automation.
@@ -306,9 +310,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (automation) {
       console.info('sending last fragment', automation);
       sendResponse({
-        details: automation.cache.size ? automation : null,
+        details: automation.cache.size ? automation : undefined,
         location: window.location.href
       });
+      automation.removeEvents();
       automation = null;
     } else {
       sendResponse({
@@ -317,7 +322,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 });
-
 
 const requestState = function() {
   console.log('requesting state');
