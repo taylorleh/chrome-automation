@@ -1,7 +1,8 @@
+require('./utils.js');
 const { fromNode, toNode } = require('simple-xpath-position');
-
 const background = chrome.runtime;
 let automation;
+
 
 /**
  * @param  {ListNode[]} list - An array of
