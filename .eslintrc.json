@@ -6,8 +6,14 @@
     "arrow-body-style": ["error", "as-needed"],
     "func-names": ["error", "never"],
     "max-len": ["error", 120, { "ignoreComments": true }],
-    "no-underscore-dangle": ["error", { "allowAfterThis": true }]
-
+    "no-underscore-dangle": [1, { "allowAfterThis": true }],
+    "object-shorthand": [1, "consistent"],
+    "one-var-declaration-per-line": [1, "initializations"],
+    "one-var": [1, { "initialized": "never", "uninitialized": "always" }],
+    "import/no-unresolved": [0],
+    "import/no-extraneous-dependencies": [0],
+    "import/newline-after-import": [0],
+    "react/require-extension": [0]
   },
   "env": {
     "browser": true,
